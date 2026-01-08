@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Todo, TaskCategory } from '../types';
 import { CATEGORY_ICONS } from '../constants';
 import { Check, Trash2, ChevronDown, ChevronUp, Sparkles, Loader2, Calendar } from 'lucide-react';
@@ -19,6 +19,10 @@ const TaskItem: React.FC<TaskItemProps> = ({ todo, onToggle, onDelete, onUpdate 
   // Edit State
   const [isEditing, setIsEditing] = useState(false);
   const [editText, setEditText] = useState(todo.text);
+
+  useEffect(() => {
+    setEditText(todo.text);
+  }, [todo.text]);
 
   const Icon = CATEGORY_ICONS[todo.category];
 

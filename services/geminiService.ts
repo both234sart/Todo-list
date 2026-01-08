@@ -3,10 +3,17 @@ import { Todo } from "../types";
 
 // Initialize the API client safely
 // The API key must be obtained exclusively from the environment variable process.env.API_KEY
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+const apiKey = process.env.API_KEY;
+// Safely instantiate AI client; if key is missing, AI features will be disabled gracefully.
+const ai = apiKey ? new GoogleGenAI({ apiKey }) : null;
+
 const MODEL_NAME = "gemini-3-flash-preview";
 
 export const getCatMotivation = async (): Promise<string> => {
+  if (!ai) {
+      console.warn("Gemini API Key missing. Returning default motivation.");
+      return "Hang in there, kitty!";
+  }
   try {
     const response = await ai.models.generateContent({
       model: MODEL_NAME,
@@ -20,6 +27,7 @@ export const getCatMotivation = async (): Promise<string> => {
 };
 
 export const breakdownTask = async (taskText: string): Promise<string[]> => {
+  if (!ai) return [];
   try {
     const response = await ai.models.generateContent({
       model: MODEL_NAME,
@@ -46,6 +54,7 @@ export const breakdownTask = async (taskText: string): Promise<string[]> => {
 };
 
 export const suggestCatTasks = async (): Promise<Todo[]> => {
+    if (!ai) return [];
     // This function generates funny cat-related tasks for the user
     try {
         const response = await ai.models.generateContent({
