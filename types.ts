@@ -4,6 +4,7 @@ export interface Todo {
   completed: boolean;
   category: TaskCategory;
   createdAt: number;
+  dueDate?: number;
 }
 
 export enum TaskCategory {

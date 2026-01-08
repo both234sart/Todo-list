@@ -1,19 +1,24 @@
 import React, { useState } from 'react';
 import { Todo, TaskCategory } from '../types';
 import { CATEGORY_ICONS } from '../constants';
-import { Check, Trash2, ChevronDown, ChevronUp, Sparkles, Loader2 } from 'lucide-react';
+import { Check, Trash2, ChevronDown, ChevronUp, Sparkles, Loader2, Calendar } from 'lucide-react';
 import { breakdownTask } from '../services/geminiService';
 
 interface TaskItemProps {
   todo: Todo;
   onToggle: (id: string) => void;
   onDelete: (id: string) => void;
+  onUpdate: (id: string, newText: string) => void;
 }
 
-const TaskItem: React.FC<TaskItemProps> = ({ todo, onToggle, onDelete }) => {
+const TaskItem: React.FC<TaskItemProps> = ({ todo, onToggle, onDelete, onUpdate }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [subtasks, setSubtasks] = useState<string[]>([]);
   const [isLoadingAi, setIsLoadingAi] = useState(false);
+  
+  // Edit State
+  const [isEditing, setIsEditing] = useState(false);
+  const [editText, setEditText] = useState(todo.text);
 
   const Icon = CATEGORY_ICONS[todo.category];
 
@@ -31,6 +36,30 @@ const TaskItem: React.FC<TaskItemProps> = ({ todo, onToggle, onDelete }) => {
     setIsLoadingAi(false);
   };
 
+  const formatDate = (timestamp?: number) => {
+    if (!timestamp) return null;
+    return new Date(timestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  };
+
+  const handleSave = () => {
+    const trimmed = editText.trim();
+    if (trimmed && trimmed !== todo.text) {
+      onUpdate(todo.id, trimmed);
+    } else {
+      setEditText(todo.text); // Revert if empty or unchanged
+    }
+    setIsEditing(false);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      handleSave();
+    } else if (e.key === 'Escape') {
+      setEditText(todo.text); // Cancel
+      setIsEditing(false);
+    }
+  };
+
   return (
     <div className={`group bg-white rounded-xl shadow-sm border border-gray-100 transition-all duration-200 hover:shadow-md ${todo.completed ? 'opacity-60' : ''}`}>
       <div className="p-4 flex items-center gap-3">
@@ -46,14 +75,38 @@ const TaskItem: React.FC<TaskItemProps> = ({ todo, onToggle, onDelete }) => {
         </button>
 
         <div className="flex-grow min-w-0">
-            <div className="flex items-center gap-2 mb-1">
-                <span className={`text-gray-800 font-medium truncate ${todo.completed ? 'line-through text-gray-400' : ''}`}>
-                    {todo.text}
-                </span>
-                <span className="text-xs px-2 py-0.5 rounded-full bg-stone-100 text-stone-500 font-medium flex items-center gap-1">
+            <div className="flex flex-wrap items-center gap-2 mb-1">
+                {isEditing ? (
+                  <input
+                    autoFocus
+                    type="text"
+                    value={editText}
+                    onChange={(e) => setEditText(e.target.value)}
+                    onBlur={handleSave}
+                    onKeyDown={handleKeyDown}
+                    className="flex-grow min-w-[150px] bg-stone-50 border border-cat-accent rounded px-2 py-0.5 text-stone-800 focus:outline-none focus:ring-2 focus:ring-cat-orange/20"
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                ) : (
+                  <span 
+                    onClick={() => !todo.completed && setIsEditing(true)}
+                    title="Click to edit"
+                    className={`text-gray-800 font-medium truncate cursor-text hover:text-cat-brown transition-colors ${todo.completed ? 'line-through text-gray-400 pointer-events-none' : ''}`}
+                  >
+                      {todo.text}
+                  </span>
+                )}
+                
+                <span className="text-xs px-2 py-0.5 rounded-full bg-stone-100 text-stone-500 font-medium flex items-center gap-1 flex-shrink-0">
                     <Icon size={10} />
                     {todo.category}
                 </span>
+                {todo.dueDate && (
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-orange-50 text-orange-600 font-medium flex items-center gap-1 flex-shrink-0">
+                    <Calendar size={10} />
+                    {formatDate(todo.dueDate)}
+                  </span>
+                )}
             </div>
         </div>
 

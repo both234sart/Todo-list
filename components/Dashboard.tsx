@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Todo, TaskCategory, User } from '../types';
 import TaskItem from './TaskItem';
-import { Plus, Cat, LogOut, Search, SortAsc, MessageCircle, Sparkles, X, Loader2 } from 'lucide-react';
+import { Plus, Cat, LogOut, Search, SortAsc, SortDesc, MessageCircle, Sparkles, X, Loader2, Calendar } from 'lucide-react';
 import { getCatMotivation, suggestCatTasks } from '../services/geminiService';
 import { supabase } from '../lib/supabase';
 
@@ -14,8 +14,14 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   const [tasks, setTasks] = useState<Todo[]>([]);
   const [isLoadingTasks, setIsLoadingTasks] = useState(true);
   const [filter, setFilter] = useState<'All' | TaskCategory>('All');
+  
+  // Sorting State
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
+  
+  // Input State
   const [newTaskText, setNewTaskText] = useState('');
   const [newTaskCategory, setNewTaskCategory] = useState<TaskCategory>(TaskCategory.GENERAL);
+  const [newTaskDueDate, setNewTaskDueDate] = useState<string>('');
   
   // AI State
   const [motivation, setMotivation] = useState<string>('');
@@ -33,6 +39,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         const { data, error } = await supabase
             .from('todos')
             .select('*')
+            // Initial fetch sort by created_at, local sort will handle due date
             .order('created_at', { ascending: false });
 
         if (error) throw error;
@@ -44,7 +51,8 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                 text: item.text,
                 completed: item.completed,
                 category: item.category as TaskCategory,
-                createdAt: new Date(item.created_at).getTime()
+                createdAt: new Date(item.created_at).getTime(),
+                dueDate: item.due_date ? new Date(item.due_date).getTime() : undefined
             }));
             setTasks(mappedTasks);
         }
@@ -67,17 +75,21 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
 
     try {
         const tempId = Date.now().toString();
+        const dueDateTimestamp = newTaskDueDate ? new Date(newTaskDueDate).getTime() : undefined;
+        
         const optimisticTask: Todo = {
             id: tempId,
             text: newTaskText,
             completed: false,
             category: newTaskCategory,
             createdAt: Date.now(),
+            dueDate: dueDateTimestamp
         };
         
         // Optimistic update
         setTasks([optimisticTask, ...tasks]);
         setNewTaskText('');
+        setNewTaskDueDate('');
 
         const { data, error } = await supabase
             .from('todos')
@@ -86,7 +98,8 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                 category: newTaskCategory,
                 completed: false,
                 user_id: user.id,
-                created_at: new Date().toISOString()
+                created_at: new Date().toISOString(),
+                due_date: newTaskDueDate ? new Date(newTaskDueDate).toISOString() : null
             }])
             .select()
             .single();
@@ -100,7 +113,8 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                 text: data.text,
                 completed: data.completed,
                 category: data.category as TaskCategory,
-                createdAt: new Date(data.created_at).getTime()
+                createdAt: new Date(data.created_at).getTime(),
+                dueDate: data.due_date ? new Date(data.due_date).getTime() : undefined
             } : t));
         }
 
@@ -132,6 +146,23 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     }
   };
 
+  const updateTaskText = async (id: string, newText: string) => {
+    // Optimistic update
+    setTasks(tasks.map(t => t.id === id ? { ...t, text: newText } : t));
+
+    try {
+        const { error } = await supabase
+            .from('todos')
+            .update({ text: newText })
+            .eq('id', id);
+
+        if (error) throw error;
+    } catch (error) {
+        console.error("Error updating task text:", error);
+        fetchTasks(); // Revert/Refresh on error
+    }
+  };
+
   const deleteTask = async (id: string) => {
     const originalTasks = [...tasks];
     setTasks(tasks.filter(t => t.id !== id));
@@ -160,7 +191,9 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                   category: t.category,
                   completed: false,
                   user_id: user.id,
-                  created_at: new Date().toISOString()
+                  created_at: new Date().toISOString(),
+                  // AI tasks have no due date by default
+                  due_date: null 
               }));
 
               const { data, error } = await supabase
@@ -176,7 +209,8 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                     text: item.text,
                     completed: item.completed,
                     category: item.category as TaskCategory,
-                    createdAt: new Date(item.created_at).getTime()
+                    createdAt: new Date(item.created_at).getTime(),
+                    dueDate: item.due_date ? new Date(item.due_date).getTime() : undefined
                 }));
                 setTasks(prev => [...mappedNewTasks, ...prev]);
               }
@@ -189,7 +223,25 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
       }
   }
 
-  const filteredTasks = tasks.filter(t => filter === 'All' || t.category === filter);
+  // Filtering and Sorting Logic
+  const filteredAndSortedTasks = tasks
+    .filter(t => filter === 'All' || t.category === filter)
+    .sort((a, b) => {
+        // Primary sort: Due Date. If missing, treat as "far future" for asc, "far past" for desc? 
+        // Or simply fallback to createdAt for stability.
+        
+        // Strategy: Use a very large number for null due dates when sorting ASC so they drop to bottom.
+        // Use 0 for null due dates when sorting DESC so they drop to bottom.
+        const dateA = a.dueDate ?? (sortOrder === 'asc' ? 8640000000000000 : 0);
+        const dateB = b.dueDate ?? (sortOrder === 'asc' ? 8640000000000000 : 0);
+
+        if (dateA !== dateB) {
+            return sortOrder === 'asc' ? dateA - dateB : dateB - dateA;
+        }
+
+        // Secondary sort: Creation date (always newest first for consistency within groups)
+        return b.createdAt - a.createdAt;
+    });
 
   return (
     <div className="min-h-screen bg-cat-cream pb-12">
@@ -262,10 +314,20 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
             </div>
             
             <div className="flex items-center gap-2 px-2 sm:px-0">
+                 {/* Date Picker Input */}
+                <div className="relative">
+                    <input 
+                        type="date" 
+                        value={newTaskDueDate}
+                        onChange={(e) => setNewTaskDueDate(e.target.value)}
+                        className="h-10 px-3 rounded-lg bg-stone-100 border-none text-xs font-medium text-stone-600 outline-none cursor-pointer hover:bg-stone-200 transition-colors w-32"
+                    />
+                </div>
+
                 <select 
                     value={newTaskCategory}
                     onChange={(e) => setNewTaskCategory(e.target.value as TaskCategory)}
-                    className="h-10 px-3 rounded-lg bg-stone-100 border-none text-sm font-medium text-stone-600 outline-none cursor-pointer hover:bg-stone-200 transition-colors"
+                    className="h-10 px-3 rounded-lg bg-stone-100 border-none text-xs font-medium text-stone-600 outline-none cursor-pointer hover:bg-stone-200 transition-colors"
                 >
                     {Object.values(TaskCategory).map(cat => (
                         <option key={cat} value={cat}>{cat}</option>
@@ -274,7 +336,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                 <button 
                     onClick={addTask}
                     disabled={isLoadingTasks}
-                    className="h-10 px-6 bg-cat-brown text-white rounded-xl font-medium hover:bg-stone-700 transition-colors flex items-center justify-center gap-2 shadow-md hover:shadow-lg active:scale-95 duration-200 disabled:opacity-70"
+                    className="h-10 px-4 sm:px-6 bg-cat-brown text-white rounded-xl font-medium hover:bg-stone-700 transition-colors flex items-center justify-center gap-2 shadow-md hover:shadow-lg active:scale-95 duration-200 disabled:opacity-70"
                 >
                     {isLoadingTasks ? <Loader2 className="animate-spin" size={18} /> : <Plus size={18} />}
                     <span className="hidden sm:inline">Add</span>
@@ -282,31 +344,50 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
             </div>
         </div>
 
-        {/* Filters */}
-        <div className="flex gap-2 mb-6 overflow-x-auto pb-2 scrollbar-hide">
-            <button
-                onClick={() => setFilter('All')}
-                className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${
-                    filter === 'All' 
-                    ? 'bg-cat-brown text-white shadow-md' 
-                    : 'bg-white text-stone-500 hover:bg-stone-50 border border-stone-200'
-                }`}
-            >
-                All Tasks
-            </button>
-            {Object.values(TaskCategory).map(cat => (
+        {/* Filters and Sort */}
+        <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
+            <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide flex-grow">
                 <button
-                    key={cat}
-                    onClick={() => setFilter(cat)}
+                    onClick={() => setFilter('All')}
                     className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${
-                        filter === cat 
+                        filter === 'All' 
                         ? 'bg-cat-brown text-white shadow-md' 
                         : 'bg-white text-stone-500 hover:bg-stone-50 border border-stone-200'
                     }`}
                 >
-                    {cat}
+                    All Tasks
                 </button>
-            ))}
+                {Object.values(TaskCategory).map(cat => (
+                    <button
+                        key={cat}
+                        onClick={() => setFilter(cat)}
+                        className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${
+                            filter === cat 
+                            ? 'bg-cat-brown text-white shadow-md' 
+                            : 'bg-white text-stone-500 hover:bg-stone-50 border border-stone-200'
+                        }`}
+                    >
+                        {cat}
+                    </button>
+                ))}
+            </div>
+
+            <button
+                onClick={() => setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc')}
+                className="flex items-center gap-2 px-4 py-2 rounded-full bg-white text-stone-600 font-medium text-sm border border-stone-200 hover:bg-stone-50 transition-all shadow-sm active:scale-95 whitespace-nowrap"
+            >
+                {sortOrder === 'asc' ? (
+                    <>
+                        <SortAsc size={16} />
+                        <span>Date: Asc</span>
+                    </>
+                ) : (
+                    <>
+                        <SortDesc size={16} />
+                        <span>Date: Desc</span>
+                    </>
+                )}
+            </button>
         </div>
 
         {/* Task List */}
@@ -316,18 +397,19 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                      <Loader2 className="animate-spin mx-auto text-cat-orange mb-2" size={32} />
                      <p className="text-stone-400 text-sm">Hunting for tasks...</p>
                  </div>
-            ) : filteredTasks.length === 0 ? (
+            ) : filteredAndSortedTasks.length === 0 ? (
                 <div className="text-center py-12 opacity-50">
                     <Cat size={48} className="mx-auto mb-4 text-stone-300" />
                     <p className="text-stone-400 font-medium">No tasks found. Time for a nap?</p>
                 </div>
             ) : (
-                filteredTasks.map(task => (
+                filteredAndSortedTasks.map(task => (
                     <TaskItem 
                         key={task.id} 
                         todo={task} 
                         onToggle={toggleTask} 
                         onDelete={deleteTask}
+                        onUpdate={updateTaskText}
                     />
                 ))
             )}
