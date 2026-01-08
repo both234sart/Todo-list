@@ -1,17 +1,31 @@
 import React, { useState, useEffect } from 'react';
 import { Todo, TaskCategory } from '../types';
-import { CATEGORY_ICONS } from '../constants';
-import { Check, Trash2, ChevronDown, ChevronUp, Sparkles, Loader2, Calendar } from 'lucide-react';
+import { CATEGORY_ICONS, CATEGORY_COLORS } from '../constants';
+import { Check, Trash2, ChevronDown, ChevronUp, Sparkles, Loader2, Calendar, GripVertical } from 'lucide-react';
 import { breakdownTask } from '../services/geminiService';
+import confetti from 'canvas-confetti';
 
 interface TaskItemProps {
   todo: Todo;
   onToggle: (id: string) => void;
   onDelete: (id: string) => void;
   onUpdate: (id: string, newText: string) => void;
+  draggable?: boolean;
+  onDragStart?: () => void;
+  onDragEnter?: () => void;
+  onDragEnd?: () => void;
 }
 
-const TaskItem: React.FC<TaskItemProps> = ({ todo, onToggle, onDelete, onUpdate }) => {
+const TaskItem: React.FC<TaskItemProps> = ({ 
+  todo, 
+  onToggle, 
+  onDelete, 
+  onUpdate,
+  draggable,
+  onDragStart,
+  onDragEnter,
+  onDragEnd
+}) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [subtasks, setSubtasks] = useState<string[]>([]);
   const [isLoadingAi, setIsLoadingAi] = useState(false);
@@ -25,6 +39,7 @@ const TaskItem: React.FC<TaskItemProps> = ({ todo, onToggle, onDelete, onUpdate 
   }, [todo.text]);
 
   const Icon = CATEGORY_ICONS[todo.category];
+  const colorClass = CATEGORY_COLORS[todo.category] || 'bg-gray-100 text-gray-500 border-gray-200';
 
   const handleAiBreakdown = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -64,11 +79,38 @@ const TaskItem: React.FC<TaskItemProps> = ({ todo, onToggle, onDelete, onUpdate 
     }
   };
 
+  const handleToggle = () => {
+    if (!todo.completed) {
+      // Trigger confetti only when marking as complete
+      confetti({
+        particleCount: 100,
+        spread: 70,
+        origin: { y: 0.6 },
+        colors: ['#FFB74D', '#5D4037', '#FFCC80'], // Cat theme colors
+        disableForReducedMotion: true
+      });
+    }
+    onToggle(todo.id);
+  };
+
   return (
-    <div className={`group bg-white rounded-xl shadow-sm border border-gray-100 transition-all duration-200 hover:shadow-md ${todo.completed ? 'opacity-60' : ''}`}>
+    <div 
+      className={`group bg-white rounded-xl shadow-sm border border-gray-100 transition-all duration-200 hover:shadow-md ${todo.completed ? 'opacity-60' : ''} ${draggable ? 'cursor-move' : ''}`}
+      draggable={draggable}
+      onDragStart={onDragStart}
+      onDragEnter={onDragEnter}
+      onDragEnd={onDragEnd}
+      onDragOver={(e) => e.preventDefault()}
+    >
       <div className="p-4 flex items-center gap-3">
+        {draggable && (
+           <div className="text-stone-300 hover:text-stone-500 cursor-grab active:cursor-grabbing hidden group-hover:block transition-colors -ml-2">
+               <GripVertical size={20} />
+           </div>
+        )}
+        
         <button
-          onClick={() => onToggle(todo.id)}
+          onClick={handleToggle}
           className={`flex-shrink-0 w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors ${
             todo.completed
               ? 'bg-cat-orange border-cat-orange text-white'
@@ -101,7 +143,7 @@ const TaskItem: React.FC<TaskItemProps> = ({ todo, onToggle, onDelete, onUpdate 
                   </span>
                 )}
                 
-                <span className="text-xs px-2 py-0.5 rounded-full bg-stone-100 text-stone-500 font-medium flex items-center gap-1 flex-shrink-0">
+                <span className={`text-xs px-2 py-0.5 rounded-full border ${colorClass} font-medium flex items-center gap-1 flex-shrink-0`}>
                     <Icon size={10} />
                     {todo.category}
                 </span>

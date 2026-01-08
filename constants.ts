@@ -9,6 +9,14 @@ export const CATEGORY_ICONS = {
   [TaskCategory.TREATS]: Fish,
 };
 
+export const CATEGORY_COLORS = {
+  [TaskCategory.GENERAL]: 'bg-gray-100 text-gray-700 border-gray-200',
+  [TaskCategory.WORK]: 'bg-sky-50 text-sky-700 border-sky-200',
+  [TaskCategory.PERSONAL]: 'bg-purple-50 text-purple-700 border-purple-200',
+  [TaskCategory.HEALTH]: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+  [TaskCategory.TREATS]: 'bg-orange-50 text-orange-700 border-orange-200',
+};
+
 export const INITIAL_TASKS = [
   {
     id: '1',

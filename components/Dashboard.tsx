@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Todo, TaskCategory, User } from '../types';
 import TaskItem from './TaskItem';
-import { Plus, Cat, LogOut, Search, SortAsc, SortDesc, MessageCircle, Sparkles, X, Loader2, Calendar } from 'lucide-react';
+import { Plus, Cat, LogOut, Search, SortAsc, SortDesc, MessageCircle, Sparkles, X, Loader2, Calendar, Bell, BellOff, List } from 'lucide-react';
 import { getCatMotivation, suggestCatTasks } from '../services/geminiService';
 import { supabase } from '../lib/supabase';
+import { CATEGORY_COLORS } from '../constants';
 
 interface DashboardProps {
   user: User;
@@ -16,8 +17,12 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   const [filter, setFilter] = useState<'All' | TaskCategory>('All');
   
   // Sorting State
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc' | 'manual'>('manual');
   
+  // Drag and Drop Refs
+  const dragItem = useRef<number | null>(null);
+  const dragOverItem = useRef<number | null>(null);
+
   // Input State
   const [newTaskText, setNewTaskText] = useState('');
   const [newTaskCategory, setNewTaskCategory] = useState<TaskCategory>(TaskCategory.GENERAL);
@@ -27,6 +32,11 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   const [motivation, setMotivation] = useState<string>('');
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [showAiModal, setShowAiModal] = useState(false);
+  const [aiTheme, setAiTheme] = useState('');
+
+  // Notifications
+  const [notificationsEnabled, setNotificationsEnabled] = useState(false);
+  const notifiedTasksRef = useRef<Set<string>>(new Set());
 
   const isGuest = user.id === 'guest';
   const GUEST_STORAGE_KEY = 'whiskerlist_guest_tasks';
@@ -34,7 +44,51 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   useEffect(() => {
     fetchTasks();
     handleNewMotivation();
+    
+    if ('Notification' in window) {
+      setNotificationsEnabled(Notification.permission === 'granted');
+    }
   }, [user.id]);
+
+  useEffect(() => {
+    if (notificationsEnabled) {
+      checkDueTasks();
+    }
+  }, [tasks, notificationsEnabled]);
+
+  const requestNotificationPermission = async () => {
+    if (!('Notification' in window)) {
+      alert("This browser does not support desktop notification");
+      return;
+    }
+    const permission = await Notification.requestPermission();
+    setNotificationsEnabled(permission === 'granted');
+    if (permission === 'granted') {
+      new Notification('WhiskerList 🐾', {
+        body: "Notifications enabled! We'll remind you about upcoming tasks.",
+      });
+      checkDueTasks();
+    }
+  };
+
+  const checkDueTasks = () => {
+    const now = Date.now();
+    const twentyFourHours = 24 * 60 * 60 * 1000;
+
+    tasks.forEach(task => {
+      if (!task.completed && task.dueDate && !notifiedTasksRef.current.has(task.id)) {
+        const timeLeft = task.dueDate - now;
+        // Notify if due within the next 24 hours (and not way in the past)
+        if (timeLeft < twentyFourHours && timeLeft > -3600000) {
+           new Notification('Upcoming Task! 🐾', {
+             body: `Meow! Don't forget: "${task.text}" is due ${timeLeft < 0 ? 'now!' : 'soon!'}`,
+             icon: 'https://cdn-icons-png.flaticon.com/512/616/616430.png' // Generic cat icon URL fallback
+           });
+           notifiedTasksRef.current.add(task.id);
+        }
+      }
+    });
+  };
 
   const fetchTasks = async () => {
     try {
@@ -90,7 +144,8 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
 
     try {
         const tempId = isGuest ? `guest-${Date.now()}` : Date.now().toString();
-        const dueDateTimestamp = newTaskDueDate ? new Date(newTaskDueDate).getTime() : undefined;
+        // Set due date to noon to avoid timezone edge cases on the exact start of day
+        const dueDateTimestamp = newTaskDueDate ? new Date(newTaskDueDate + 'T12:00:00').getTime() : undefined;
         
         const newTask: Todo = {
             id: tempId,
@@ -123,7 +178,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                 completed: false,
                 user_id: user.id,
                 created_at: new Date().toISOString(),
-                due_date: newTaskDueDate ? new Date(newTaskDueDate).toISOString() : null
+                due_date: newTaskDueDate ? new Date(newTaskDueDate + 'T12:00:00').toISOString() : null
             }])
             .select()
             .single();
@@ -197,12 +252,19 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   };
 
   const deleteTask = async (id: string) => {
+    const tasksAfterDelete = tasks.filter(t => t.id !== id);
     const originalTasks = [...tasks];
-    const newTasks = tasks.filter(t => t.id !== id);
-    setTasks(newTasks);
+    
+    // Update State Optimistically
+    setTasks(tasksAfterDelete);
 
     if (isGuest) {
-        localStorage.setItem(GUEST_STORAGE_KEY, JSON.stringify(newTasks));
+        try {
+            localStorage.setItem(GUEST_STORAGE_KEY, JSON.stringify(tasksAfterDelete));
+        } catch (e) {
+            console.error("Failed to update local storage", e);
+            setTasks(originalTasks); // Revert on failure
+        }
         return;
     }
 
@@ -215,14 +277,14 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         if (error) throw error;
     } catch (error) {
         console.error("Error deleting task:", error);
-        setTasks(originalTasks);
+        setTasks(originalTasks); // Revert on failure
     }
   };
 
   const handleAiSuggestions = async () => {
       setIsAiLoading(true);
       try {
-          const suggestions = await suggestCatTasks();
+          const suggestions = await suggestCatTasks(aiTheme);
           if(suggestions.length > 0) {
               if (isGuest) {
                    const mappedNewTasks = suggestions.map((t, idx) => ({
@@ -272,13 +334,62 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
       } finally {
           setIsAiLoading(false);
           setShowAiModal(false);
+          setAiTheme('');
       }
   }
+
+  // Handle Drag and Drop
+  const handleSort = () => {
+    if (dragItem.current === null || dragOverItem.current === null) return;
+    
+    // Create a copy of the tasks
+    const _tasks = [...tasks];
+    
+    // We need to identify the tasks by the current visual list order
+    // But we are sorting the *main* task list.
+    // If we are filtering, drag-and-drop behaves weirdly if we just use indices of the filtered list against the main list.
+    // So, we need to find the specific items in the main list.
+    
+    const visualList = filteredAndSortedTasks;
+    const draggedTask = visualList[dragItem.current];
+    const targetTask = visualList[dragOverItem.current];
+    
+    // Find their real indices in the main list
+    const draggedTaskIndex = _tasks.findIndex(t => t.id === draggedTask.id);
+    const targetTaskIndex = _tasks.findIndex(t => t.id === targetTask.id);
+    
+    if (draggedTaskIndex === -1 || targetTaskIndex === -1) return;
+
+    // Remove dragged task
+    const [reorderedItem] = _tasks.splice(draggedTaskIndex, 1);
+    // Insert at new position
+    _tasks.splice(targetTaskIndex, 0, reorderedItem);
+    
+    setTasks(_tasks);
+    setSortOrder('manual'); // Switch to manual sort so auto-sort doesn't revert the change immediately
+    
+    if (isGuest) {
+        localStorage.setItem(GUEST_STORAGE_KEY, JSON.stringify(_tasks));
+    }
+
+    dragItem.current = null;
+    dragOverItem.current = null;
+  };
+
+  const cycleSortOrder = () => {
+      setSortOrder(prev => {
+          if (prev === 'manual') return 'asc';
+          if (prev === 'asc') return 'desc';
+          return 'manual';
+      });
+  };
 
   // Filtering and Sorting Logic
   const filteredAndSortedTasks = tasks
     .filter(t => filter === 'All' || t.category === filter)
     .sort((a, b) => {
+        if (sortOrder === 'manual') return 0; // Keep array order
+
         const dateA = a.dueDate ?? (sortOrder === 'asc' ? 8640000000000000 : 0);
         const dateB = b.dueDate ?? (sortOrder === 'asc' ? 8640000000000000 : 0);
 
@@ -304,6 +415,15 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
             {isGuest && (
                  <span className="px-2 py-1 bg-orange-100 text-orange-600 text-xs font-bold rounded uppercase tracking-wide">Guest Mode</span>
             )}
+            
+            <button
+              onClick={requestNotificationPermission}
+              className={`p-2 rounded-full transition-colors ${notificationsEnabled ? 'text-cat-orange bg-orange-50' : 'text-stone-400 hover:text-cat-orange hover:bg-stone-50'}`}
+              title={notificationsEnabled ? "Notifications active" : "Enable notifications"}
+            >
+                {notificationsEnabled ? <Bell size={20} /> : <BellOff size={20} />}
+            </button>
+
             <div className="flex items-center gap-2 bg-stone-100 px-3 py-1.5 rounded-full border border-stone-200">
                 <img src={user.avatarUrl} alt={user.name} className="w-6 h-6 rounded-full" />
                 <span className="text-sm font-medium text-stone-600 hidden sm:inline">{user.name}</span>
@@ -405,34 +525,46 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                 >
                     All Tasks
                 </button>
-                {Object.values(TaskCategory).map(cat => (
-                    <button
-                        key={cat}
-                        onClick={() => setFilter(cat)}
-                        className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${
-                            filter === cat 
-                            ? 'bg-cat-brown text-white shadow-md' 
-                            : 'bg-white text-stone-500 hover:bg-stone-50 border border-stone-200'
-                        }`}
-                    >
-                        {cat}
-                    </button>
-                ))}
+                {Object.values(TaskCategory).map(cat => {
+                    const isActive = filter === cat;
+                    const colorClass = CATEGORY_COLORS[cat];
+                    
+                    return (
+                        <button
+                            key={cat}
+                            onClick={() => setFilter(cat)}
+                            className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors border ${
+                                isActive 
+                                ? `${colorClass} shadow-md ring-1 ring-offset-1` 
+                                : 'bg-white text-stone-500 hover:bg-stone-50 border-stone-200'
+                            }`}
+                        >
+                            {cat}
+                        </button>
+                    );
+                })}
             </div>
 
             <button
-                onClick={() => setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc')}
+                onClick={cycleSortOrder}
                 className="flex items-center gap-2 px-4 py-2 rounded-full bg-white text-stone-600 font-medium text-sm border border-stone-200 hover:bg-stone-50 transition-all shadow-sm active:scale-95 whitespace-nowrap"
             >
-                {sortOrder === 'asc' ? (
+                {sortOrder === 'asc' && (
                     <>
                         <SortAsc size={16} />
                         <span>Date: Asc</span>
                     </>
-                ) : (
+                )}
+                {sortOrder === 'desc' && (
                     <>
                         <SortDesc size={16} />
                         <span>Date: Desc</span>
+                    </>
+                )}
+                {sortOrder === 'manual' && (
+                    <>
+                        <List size={16} />
+                        <span>Manual</span>
                     </>
                 )}
             </button>
@@ -451,13 +583,17 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                     <p className="text-stone-400 font-medium">No tasks found. Time for a nap?</p>
                 </div>
             ) : (
-                filteredAndSortedTasks.map(task => (
+                filteredAndSortedTasks.map((task, index) => (
                     <TaskItem 
                         key={task.id} 
                         todo={task} 
                         onToggle={toggleTask} 
                         onDelete={deleteTask}
                         onUpdate={updateTaskText}
+                        draggable={sortOrder === 'manual'}
+                        onDragStart={() => dragItem.current = index}
+                        onDragEnter={() => dragOverItem.current = index}
+                        onDragEnd={handleSort}
                     />
                 ))
             )}
@@ -477,9 +613,21 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                             <X size={20} />
                         </button>
                     </div>
-                    <p className="text-stone-600 mb-6 text-sm">
+                    <p className="text-stone-600 mb-4 text-sm">
                         Running low on ideas? Let the AI generate some "important" cat business for you.
                     </p>
+
+                    <div className="mb-6">
+                        <input 
+                            type="text" 
+                            value={aiTheme}
+                            onChange={(e) => setAiTheme(e.target.value)}
+                            onKeyDown={(e) => e.key === 'Enter' && handleAiSuggestions()}
+                            placeholder="e.g. hunting, napping, accounting..." 
+                            className="w-full px-4 py-2 rounded-xl bg-stone-50 border border-stone-200 focus:border-cat-orange focus:ring-2 focus:ring-cat-orange/20 outline-none text-stone-700 placeholder:text-stone-400 transition-all text-sm"
+                        />
+                    </div>
+
                     <button 
                         onClick={handleAiSuggestions}
                         disabled={isAiLoading}

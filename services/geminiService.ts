@@ -53,13 +53,19 @@ export const breakdownTask = async (taskText: string): Promise<string[]> => {
   }
 };
 
-export const suggestCatTasks = async (): Promise<Todo[]> => {
+export const suggestCatTasks = async (theme?: string): Promise<Todo[]> => {
     if (!ai) return [];
-    // This function generates funny cat-related tasks for the user
+    
+    let prompt = "Generate 3 funny to-do list items that a cat might have.";
+    if (theme && theme.trim()) {
+        prompt = `Generate 3 funny to-do list items that a cat might have, specifically related to the theme: "${theme}". Keep it feline-focused but relevant to the theme.`;
+    }
+    prompt += " Return as a JSON array of strings.";
+
     try {
         const response = await ai.models.generateContent({
             model: MODEL_NAME,
-            contents: "Generate 3 funny to-do list items that a cat might have. Return as a JSON array of strings.",
+            contents: prompt,
             config: {
                 responseMimeType: "application/json",
                 responseSchema: {
