@@ -28,6 +28,9 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [showAiModal, setShowAiModal] = useState(false);
 
+  const isGuest = user.id === 'guest';
+  const GUEST_STORAGE_KEY = 'whiskerlist_guest_tasks';
+
   useEffect(() => {
     fetchTasks();
     handleNewMotivation();
@@ -36,16 +39,28 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   const fetchTasks = async () => {
     try {
         setIsLoadingTasks(true);
+
+        if (isGuest) {
+            // Guest Mode: Fetch from LocalStorage
+            const stored = localStorage.getItem(GUEST_STORAGE_KEY);
+            if (stored) {
+                setTasks(JSON.parse(stored));
+            } else {
+                setTasks([]);
+            }
+            setIsLoadingTasks(false);
+            return;
+        }
+
+        // Supabase Mode
         const { data, error } = await supabase
             .from('todos')
             .select('*')
-            // Initial fetch sort by created_at, local sort will handle due date
             .order('created_at', { ascending: false });
 
         if (error) throw error;
 
         if (data) {
-            // Map DB snake_case to CamelCase Todo type
             const mappedTasks: Todo[] = data.map((item: any) => ({
                 id: item.id,
                 text: item.text,
@@ -74,10 +89,10 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     if (!newTaskText.trim()) return;
 
     try {
-        const tempId = Date.now().toString();
+        const tempId = isGuest ? `guest-${Date.now()}` : Date.now().toString();
         const dueDateTimestamp = newTaskDueDate ? new Date(newTaskDueDate).getTime() : undefined;
         
-        const optimisticTask: Todo = {
+        const newTask: Todo = {
             id: tempId,
             text: newTaskText,
             completed: false,
@@ -86,8 +101,17 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
             dueDate: dueDateTimestamp
         };
         
-        // Optimistic update
-        setTasks([optimisticTask, ...tasks]);
+        if (isGuest) {
+            const updatedTasks = [newTask, ...tasks];
+            setTasks(updatedTasks);
+            localStorage.setItem(GUEST_STORAGE_KEY, JSON.stringify(updatedTasks));
+            setNewTaskText('');
+            setNewTaskDueDate('');
+            return;
+        }
+
+        // Optimistic update for Supabase
+        setTasks([newTask, ...tasks]);
         setNewTaskText('');
         setNewTaskDueDate('');
 
@@ -120,8 +144,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
 
     } catch (error) {
         console.error("Error adding task:", error);
-        // Revert on error (could be handled better in real app)
-        fetchTasks(); 
+        if (!isGuest) fetchTasks(); 
     }
   };
 
@@ -129,9 +152,14 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     const task = tasks.find(t => t.id === id);
     if (!task) return;
 
-    // Optimistic Update
     const newStatus = !task.completed;
-    setTasks(tasks.map(t => t.id === id ? { ...t, completed: newStatus } : t));
+    const updatedTasks = tasks.map(t => t.id === id ? { ...t, completed: newStatus } : t);
+    setTasks(updatedTasks);
+
+    if (isGuest) {
+        localStorage.setItem(GUEST_STORAGE_KEY, JSON.stringify(updatedTasks));
+        return;
+    }
 
     try {
         const { error } = await supabase
@@ -147,8 +175,13 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   };
 
   const updateTaskText = async (id: string, newText: string) => {
-    // Optimistic update
-    setTasks(tasks.map(t => t.id === id ? { ...t, text: newText } : t));
+    const updatedTasks = tasks.map(t => t.id === id ? { ...t, text: newText } : t);
+    setTasks(updatedTasks);
+
+    if (isGuest) {
+        localStorage.setItem(GUEST_STORAGE_KEY, JSON.stringify(updatedTasks));
+        return;
+    }
 
     try {
         const { error } = await supabase
@@ -159,13 +192,19 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         if (error) throw error;
     } catch (error) {
         console.error("Error updating task text:", error);
-        fetchTasks(); // Revert/Refresh on error
+        fetchTasks(); 
     }
   };
 
   const deleteTask = async (id: string) => {
     const originalTasks = [...tasks];
-    setTasks(tasks.filter(t => t.id !== id));
+    const newTasks = tasks.filter(t => t.id !== id);
+    setTasks(newTasks);
+
+    if (isGuest) {
+        localStorage.setItem(GUEST_STORAGE_KEY, JSON.stringify(newTasks));
+        return;
+    }
 
     try {
         const { error } = await supabase
@@ -183,36 +222,49 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   const handleAiSuggestions = async () => {
       setIsAiLoading(true);
       try {
-          const newTasks = await suggestCatTasks();
-          if(newTasks.length > 0) {
-              // Prepare tasks for DB insertion
-              const dbTasks = newTasks.map(t => ({
-                  text: t.text,
-                  category: t.category,
-                  completed: false,
-                  user_id: user.id,
-                  created_at: new Date().toISOString(),
-                  // AI tasks have no due date by default
-                  due_date: null 
-              }));
+          const suggestions = await suggestCatTasks();
+          if(suggestions.length > 0) {
+              if (isGuest) {
+                   const mappedNewTasks = suggestions.map((t, idx) => ({
+                       id: `guest-ai-${Date.now()}-${idx}`,
+                       text: t.text,
+                       completed: false,
+                       category: t.category,
+                       createdAt: Date.now(),
+                       dueDate: undefined
+                   }));
+                   const updatedTasks = [...mappedNewTasks, ...tasks];
+                   setTasks(updatedTasks);
+                   localStorage.setItem(GUEST_STORAGE_KEY, JSON.stringify(updatedTasks));
+              } else {
+                  // Prepare tasks for DB insertion
+                  const dbTasks = suggestions.map(t => ({
+                      text: t.text,
+                      category: t.category,
+                      completed: false,
+                      user_id: user.id,
+                      created_at: new Date().toISOString(),
+                      due_date: null 
+                  }));
 
-              const { data, error } = await supabase
-                  .from('todos')
-                  .insert(dbTasks)
-                  .select();
+                  const { data, error } = await supabase
+                      .from('todos')
+                      .insert(dbTasks)
+                      .select();
 
-              if (error) throw error;
+                  if (error) throw error;
 
-              if (data) {
-                  const mappedNewTasks: Todo[] = data.map((item: any) => ({
-                    id: item.id,
-                    text: item.text,
-                    completed: item.completed,
-                    category: item.category as TaskCategory,
-                    createdAt: new Date(item.created_at).getTime(),
-                    dueDate: item.due_date ? new Date(item.due_date).getTime() : undefined
-                }));
-                setTasks(prev => [...mappedNewTasks, ...prev]);
+                  if (data) {
+                      const mappedNewTasks: Todo[] = data.map((item: any) => ({
+                        id: item.id,
+                        text: item.text,
+                        completed: item.completed,
+                        category: item.category as TaskCategory,
+                        createdAt: new Date(item.created_at).getTime(),
+                        dueDate: item.due_date ? new Date(item.due_date).getTime() : undefined
+                    }));
+                    setTasks(prev => [...mappedNewTasks, ...prev]);
+                  }
               }
           }
       } catch (error) {
@@ -227,19 +279,12 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   const filteredAndSortedTasks = tasks
     .filter(t => filter === 'All' || t.category === filter)
     .sort((a, b) => {
-        // Primary sort: Due Date. If missing, treat as "far future" for asc, "far past" for desc? 
-        // Or simply fallback to createdAt for stability.
-        
-        // Strategy: Use a very large number for null due dates when sorting ASC so they drop to bottom.
-        // Use 0 for null due dates when sorting DESC so they drop to bottom.
         const dateA = a.dueDate ?? (sortOrder === 'asc' ? 8640000000000000 : 0);
         const dateB = b.dueDate ?? (sortOrder === 'asc' ? 8640000000000000 : 0);
 
         if (dateA !== dateB) {
             return sortOrder === 'asc' ? dateA - dateB : dateB - dateA;
         }
-
-        // Secondary sort: Creation date (always newest first for consistency within groups)
         return b.createdAt - a.createdAt;
     });
 
@@ -256,6 +301,9 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
           </div>
 
           <div className="flex items-center gap-4">
+            {isGuest && (
+                 <span className="px-2 py-1 bg-orange-100 text-orange-600 text-xs font-bold rounded uppercase tracking-wide">Guest Mode</span>
+            )}
             <div className="flex items-center gap-2 bg-stone-100 px-3 py-1.5 rounded-full border border-stone-200">
                 <img src={user.avatarUrl} alt={user.name} className="w-6 h-6 rounded-full" />
                 <span className="text-sm font-medium text-stone-600 hidden sm:inline">{user.name}</span>

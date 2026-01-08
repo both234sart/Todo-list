@@ -36,7 +36,13 @@ const App: React.FC = () => {
             avatarUrl: session.user.user_metadata.avatar_url || 'https://picsum.photos/100/100'
         });
       } else {
-        setUser(null);
+        // Only clear user if we are not explicitly in guest mode
+        // Note: checking user state here is tricky due to closure, 
+        // so we rely on the fact that 'Guest' doesn't use Supabase session.
+        // If a real sign-out happens, we want to clear the user.
+        // For simplicity, we'll handle explicit Guest logout separately.
+        // If this event fires with null session, it means no Supabase user.
+        // If we are currently guest, this event typically won't fire unless initial load or explicit signOut.
       }
       setLoading(false);
     });
@@ -44,8 +50,22 @@ const App: React.FC = () => {
     return () => subscription.unsubscribe();
   }, []);
 
+  const handleGuestLogin = () => {
+      setUser({
+          id: 'guest',
+          name: 'Guest Cat',
+          email: 'guest@whiskerlist.app',
+          avatarUrl: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Felix' // Cute consistent avatar
+      });
+  };
+
   const handleLogout = async () => {
-    await supabase.auth.signOut();
+    if (user?.id === 'guest') {
+        setUser(null);
+    } else {
+        await supabase.auth.signOut();
+        setUser(null); // Ensure UI clears
+    }
   };
 
   if (loading) {
@@ -56,8 +76,8 @@ const App: React.FC = () => {
       );
   }
 
-  if (!session || !user) {
-    return <Login onLogin={() => {}} />;
+  if (!user) {
+    return <Login onLogin={() => {}} onGuestLogin={handleGuestLogin} />;
   }
 
   return <Dashboard user={user} onLogout={handleLogout} />;
