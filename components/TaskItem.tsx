@@ -1,0 +1,117 @@
+import React, { useState } from 'react';
+import { Todo, TaskCategory } from '../types';
+import { CATEGORY_ICONS } from '../constants';
+import { Check, Trash2, ChevronDown, ChevronUp, Sparkles, Loader2 } from 'lucide-react';
+import { breakdownTask } from '../services/geminiService';
+
+interface TaskItemProps {
+  todo: Todo;
+  onToggle: (id: string) => void;
+  onDelete: (id: string) => void;
+}
+
+const TaskItem: React.FC<TaskItemProps> = ({ todo, onToggle, onDelete }) => {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [subtasks, setSubtasks] = useState<string[]>([]);
+  const [isLoadingAi, setIsLoadingAi] = useState(false);
+
+  const Icon = CATEGORY_ICONS[todo.category];
+
+  const handleAiBreakdown = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (subtasks.length > 0) {
+        setIsExpanded(!isExpanded);
+        return;
+    }
+
+    setIsExpanded(true);
+    setIsLoadingAi(true);
+    const steps = await breakdownTask(todo.text);
+    setSubtasks(steps);
+    setIsLoadingAi(false);
+  };
+
+  return (
+    <div className={`group bg-white rounded-xl shadow-sm border border-gray-100 transition-all duration-200 hover:shadow-md ${todo.completed ? 'opacity-60' : ''}`}>
+      <div className="p-4 flex items-center gap-3">
+        <button
+          onClick={() => onToggle(todo.id)}
+          className={`flex-shrink-0 w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors ${
+            todo.completed
+              ? 'bg-cat-orange border-cat-orange text-white'
+              : 'border-cat-gray text-transparent hover:border-cat-orange'
+          }`}
+        >
+          <Check size={14} strokeWidth={3} />
+        </button>
+
+        <div className="flex-grow min-w-0">
+            <div className="flex items-center gap-2 mb-1">
+                <span className={`text-gray-800 font-medium truncate ${todo.completed ? 'line-through text-gray-400' : ''}`}>
+                    {todo.text}
+                </span>
+                <span className="text-xs px-2 py-0.5 rounded-full bg-stone-100 text-stone-500 font-medium flex items-center gap-1">
+                    <Icon size={10} />
+                    {todo.category}
+                </span>
+            </div>
+        </div>
+
+        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+            {!todo.completed && (
+                <button 
+                    onClick={handleAiBreakdown}
+                    className="p-2 text-cat-accent hover:text-cat-orange-dark hover:bg-orange-50 rounded-lg transition-colors"
+                    title="Break down with AI"
+                >
+                    <Sparkles size={16} />
+                </button>
+            )}
+            <button
+                onClick={() => onDelete(todo.id)}
+                className="p-2 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+            >
+                <Trash2 size={16} />
+            </button>
+        </div>
+      </div>
+
+      {/* AI Subtasks Section */}
+      {isExpanded && (
+        <div className="px-4 pb-4 pl-12">
+            <div className="bg-orange-50/50 rounded-lg p-3 text-sm">
+                <div className="flex items-center justify-between mb-2">
+                    <span className="font-semibold text-cat-brown flex items-center gap-2">
+                        <CatPawIcon />
+                        Plan of Attack
+                    </span>
+                    {isLoadingAi && <Loader2 size={14} className="animate-spin text-cat-orange" />}
+                </div>
+                
+                {subtasks.length > 0 ? (
+                    <ul className="space-y-2">
+                        {subtasks.map((step, idx) => (
+                            <li key={idx} className="flex items-start gap-2 text-stone-600">
+                                <span className="mt-1 w-1.5 h-1.5 rounded-full bg-cat-accent flex-shrink-0" />
+                                {step}
+                            </li>
+                        ))}
+                    </ul>
+                ) : !isLoadingAi && (
+                    <p className="text-stone-400 italic">No breakdown available.</p>
+                )}
+            </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// Simple SVG icon helper
+const CatPawIcon = () => (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" className="text-cat-orange">
+        <path d="M12 2C13.1 2 14 2.9 14 4S13.1 6 12 6 10 5.1 10 4 10.9 2 12 2M17 5C18.1 5 19 5.9 19 7S18.1 9 17 9 15 8.1 15 7 15.9 5 17 5M7 5C8.1 5 9 5.9 9 7S8.1 9 7 9 5 8.1 5 7 5.9 5 7 5M12 8C15.31 8 18 10.69 18 14H6C6 10.69 8.69 8 12 8M8.8 16C9.6 15.2 10.7 14.8 11.9 14.8C13.2 14.8 14.4 15.3 15.2 16.2C15.2 16.3 15.3 16.4 15.3 16.5C15.6 17.5 15.2 18.6 14.3 19.1C13.6 19.5 12.8 19.7 12 19.7C11.1 19.7 10.3 19.4 9.6 19C8.7 18.5 8.3 17.4 8.7 16.4C8.7 16.3 8.7 16.1 8.8 16Z" />
+    </svg>
+);
+
+export default TaskItem;
