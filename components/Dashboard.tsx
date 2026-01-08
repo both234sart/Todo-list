@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Todo, TaskCategory, User } from '../types';
 import TaskItem from './TaskItem';
-import { Plus, Cat, LogOut, Search, SortAsc, SortDesc, MessageCircle, Sparkles, X, Loader2, Calendar, Bell, BellOff, List, Moon, Sun } from 'lucide-react';
+import { Plus, Cat, LogOut, Search, SortAsc, SortDesc, MessageCircle, Sparkles, X, Loader2, Calendar, Bell, BellOff, List, Moon, Sun, Filter, CheckCircle2, Circle } from 'lucide-react';
 import { getCatMotivation, suggestCatTasks } from '../services/geminiService';
 import { supabase } from '../lib/supabase';
 import { CATEGORY_COLORS } from '../constants';
@@ -19,8 +19,9 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   // Theme State
   const [isDarkMode, setIsDarkMode] = useState(false);
 
-  // Sorting State
+  // Sorting and Filtering State
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc' | 'manual'>('manual');
+  const [statusFilter, setStatusFilter] = useState<'All' | 'Completed' | 'Incomplete'>('All');
   
   // Drag and Drop Refs
   const dragItem = useRef<number | null>(null);
@@ -409,9 +410,25 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
       });
   };
 
+  const cycleStatusFilter = () => {
+      setStatusFilter(prev => {
+          if (prev === 'All') return 'Incomplete';
+          if (prev === 'Incomplete') return 'Completed';
+          return 'All';
+      });
+  };
+
   // Filtering and Sorting Logic
   const filteredAndSortedTasks = tasks
-    .filter(t => filter === 'All' || t.category === filter)
+    .filter(t => {
+        const matchesCategory = filter === 'All' || t.category === filter;
+        const matchesStatus = statusFilter === 'All' 
+            ? true 
+            : statusFilter === 'Completed' 
+                ? t.completed 
+                : !t.completed;
+        return matchesCategory && matchesStatus;
+    })
     .sort((a, b) => {
         if (sortOrder === 'manual') return 0; // Keep array order
 
@@ -578,29 +595,55 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                 })}
             </div>
 
-            <button
-                onClick={cycleSortOrder}
-                className="flex items-center gap-2 px-4 py-2 rounded-full bg-white dark:bg-stone-900 text-stone-600 dark:text-stone-300 font-medium text-sm border border-stone-200 dark:border-stone-800 hover:bg-stone-50 dark:hover:bg-stone-800 transition-all shadow-sm active:scale-95 whitespace-nowrap"
-            >
-                {sortOrder === 'asc' && (
-                    <>
-                        <SortAsc size={16} />
-                        <span>Date: Asc</span>
-                    </>
-                )}
-                {sortOrder === 'desc' && (
-                    <>
-                        <SortDesc size={16} />
-                        <span>Date: Desc</span>
-                    </>
-                )}
-                {sortOrder === 'manual' && (
-                    <>
-                        <List size={16} />
-                        <span>Manual</span>
-                    </>
-                )}
-            </button>
+            <div className="flex items-center gap-2">
+                <button
+                    onClick={cycleStatusFilter}
+                    className="flex items-center gap-2 px-4 py-2 rounded-full bg-white dark:bg-stone-900 text-stone-600 dark:text-stone-300 font-medium text-sm border border-stone-200 dark:border-stone-800 hover:bg-stone-50 dark:hover:bg-stone-800 transition-all shadow-sm active:scale-95 whitespace-nowrap"
+                >
+                    {statusFilter === 'All' && (
+                        <>
+                            <Filter size={16} />
+                            <span>Status: All</span>
+                        </>
+                    )}
+                    {statusFilter === 'Incomplete' && (
+                        <>
+                            <Circle size={16} />
+                            <span>Active</span>
+                        </>
+                    )}
+                    {statusFilter === 'Completed' && (
+                        <>
+                            <CheckCircle2 size={16} />
+                            <span>Completed</span>
+                        </>
+                    )}
+                </button>
+
+                <button
+                    onClick={cycleSortOrder}
+                    className="flex items-center gap-2 px-4 py-2 rounded-full bg-white dark:bg-stone-900 text-stone-600 dark:text-stone-300 font-medium text-sm border border-stone-200 dark:border-stone-800 hover:bg-stone-50 dark:hover:bg-stone-800 transition-all shadow-sm active:scale-95 whitespace-nowrap"
+                >
+                    {sortOrder === 'asc' && (
+                        <>
+                            <SortAsc size={16} />
+                            <span>Date: Asc</span>
+                        </>
+                    )}
+                    {sortOrder === 'desc' && (
+                        <>
+                            <SortDesc size={16} />
+                            <span>Date: Desc</span>
+                        </>
+                    )}
+                    {sortOrder === 'manual' && (
+                        <>
+                            <List size={16} />
+                            <span>Manual</span>
+                        </>
+                    )}
+                </button>
+            </div>
         </div>
 
         {/* Task List */}

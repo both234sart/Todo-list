@@ -3,7 +3,9 @@ import { Todo } from "../types";
 
 // Initialize the API client safely
 // The API key must be obtained exclusively from the environment variable process.env.API_KEY
-const apiKey = process.env.API_KEY;
+// We check if process is defined to avoid crashes in browser environments without polyfills
+const apiKey = (typeof process !== 'undefined' && process.env) ? process.env.API_KEY : undefined;
+
 // Safely instantiate AI client; if key is missing, AI features will be disabled gracefully.
 const ai = apiKey ? new GoogleGenAI({ apiKey }) : null;
 
