@@ -39,7 +39,7 @@ const TaskItem: React.FC<TaskItemProps> = ({
   }, [todo.text]);
 
   const Icon = CATEGORY_ICONS[todo.category];
-  const colorClass = CATEGORY_COLORS[todo.category] || 'bg-gray-100 text-gray-500 border-gray-200';
+  const colorClass = CATEGORY_COLORS[todo.category] || 'bg-gray-100 text-gray-500 border-gray-200 dark:bg-stone-800 dark:text-stone-400 dark:border-stone-700';
 
   const handleAiBreakdown = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -95,7 +95,7 @@ const TaskItem: React.FC<TaskItemProps> = ({
 
   return (
     <div 
-      className={`group bg-white rounded-xl shadow-sm border border-gray-100 transition-all duration-200 hover:shadow-md ${todo.completed ? 'opacity-60' : ''} ${draggable ? 'cursor-move' : ''}`}
+      className={`group bg-white dark:bg-stone-900 rounded-xl shadow-sm border border-gray-100 dark:border-stone-800 transition-all duration-200 hover:shadow-md ${todo.completed ? 'opacity-60' : ''} ${draggable ? 'cursor-move' : ''}`}
       draggable={draggable}
       onDragStart={onDragStart}
       onDragEnter={onDragEnter}
@@ -104,7 +104,7 @@ const TaskItem: React.FC<TaskItemProps> = ({
     >
       <div className="p-4 flex items-center gap-3">
         {draggable && (
-           <div className="text-stone-300 hover:text-stone-500 cursor-grab active:cursor-grabbing hidden group-hover:block transition-colors -ml-2">
+           <div className="text-stone-300 hover:text-stone-500 dark:text-stone-600 dark:hover:text-stone-400 cursor-grab active:cursor-grabbing hidden group-hover:block transition-colors -ml-2">
                <GripVertical size={20} />
            </div>
         )}
@@ -114,7 +114,7 @@ const TaskItem: React.FC<TaskItemProps> = ({
           className={`flex-shrink-0 w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors ${
             todo.completed
               ? 'bg-cat-orange border-cat-orange text-white'
-              : 'border-cat-gray text-transparent hover:border-cat-orange'
+              : 'border-cat-gray dark:border-stone-600 text-transparent hover:border-cat-orange dark:hover:border-cat-orange'
           }`}
         >
           <Check size={14} strokeWidth={3} />
@@ -130,14 +130,14 @@ const TaskItem: React.FC<TaskItemProps> = ({
                     onChange={(e) => setEditText(e.target.value)}
                     onBlur={handleSave}
                     onKeyDown={handleKeyDown}
-                    className="flex-grow min-w-[150px] bg-stone-50 border border-cat-accent rounded px-2 py-0.5 text-stone-800 focus:outline-none focus:ring-2 focus:ring-cat-orange/20"
+                    className="flex-grow min-w-[150px] bg-stone-50 dark:bg-stone-800 border border-cat-accent dark:border-stone-600 rounded px-2 py-0.5 text-stone-800 dark:text-stone-200 focus:outline-none focus:ring-2 focus:ring-cat-orange/20"
                     onClick={(e) => e.stopPropagation()}
                   />
                 ) : (
                   <span 
                     onClick={() => !todo.completed && setIsEditing(true)}
                     title="Click to edit"
-                    className={`text-gray-800 font-medium truncate cursor-text hover:text-cat-brown transition-colors ${todo.completed ? 'line-through text-gray-400 pointer-events-none' : ''}`}
+                    className={`text-gray-800 dark:text-stone-200 font-medium truncate cursor-text hover:text-cat-brown dark:hover:text-cat-orange transition-colors ${todo.completed ? 'line-through text-gray-400 dark:text-stone-600 pointer-events-none' : ''}`}
                   >
                       {todo.text}
                   </span>
@@ -148,7 +148,7 @@ const TaskItem: React.FC<TaskItemProps> = ({
                     {todo.category}
                 </span>
                 {todo.dueDate && (
-                  <span className="text-xs px-2 py-0.5 rounded-full bg-orange-50 text-orange-600 font-medium flex items-center gap-1 flex-shrink-0">
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-orange-50 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 font-medium flex items-center gap-1 flex-shrink-0">
                     <Calendar size={10} />
                     {formatDate(todo.dueDate)}
                   </span>
@@ -160,7 +160,7 @@ const TaskItem: React.FC<TaskItemProps> = ({
             {!todo.completed && (
                 <button 
                     onClick={handleAiBreakdown}
-                    className="p-2 text-cat-accent hover:text-cat-orange-dark hover:bg-orange-50 rounded-lg transition-colors"
+                    className="p-2 text-cat-accent hover:text-cat-orange-dark hover:bg-orange-50 dark:hover:bg-stone-800 rounded-lg transition-colors"
                     title="Break down with AI"
                 >
                     <Sparkles size={16} />
@@ -168,7 +168,7 @@ const TaskItem: React.FC<TaskItemProps> = ({
             )}
             <button
                 onClick={() => onDelete(todo.id)}
-                className="p-2 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                className="p-2 text-gray-300 dark:text-stone-600 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
             >
                 <Trash2 size={16} />
             </button>
@@ -178,9 +178,9 @@ const TaskItem: React.FC<TaskItemProps> = ({
       {/* AI Subtasks Section */}
       {isExpanded && (
         <div className="px-4 pb-4 pl-12">
-            <div className="bg-orange-50/50 rounded-lg p-3 text-sm">
+            <div className="bg-orange-50/50 dark:bg-orange-900/10 rounded-lg p-3 text-sm">
                 <div className="flex items-center justify-between mb-2">
-                    <span className="font-semibold text-cat-brown flex items-center gap-2">
+                    <span className="font-semibold text-cat-brown dark:text-cat-orange flex items-center gap-2">
                         <CatPawIcon />
                         Plan of Attack
                     </span>
@@ -190,14 +190,14 @@ const TaskItem: React.FC<TaskItemProps> = ({
                 {subtasks.length > 0 ? (
                     <ul className="space-y-2">
                         {subtasks.map((step, idx) => (
-                            <li key={idx} className="flex items-start gap-2 text-stone-600">
+                            <li key={idx} className="flex items-start gap-2 text-stone-600 dark:text-stone-400">
                                 <span className="mt-1 w-1.5 h-1.5 rounded-full bg-cat-accent flex-shrink-0" />
                                 {step}
                             </li>
                         ))}
                     </ul>
                 ) : !isLoadingAi && (
-                    <p className="text-stone-400 italic">No breakdown available.</p>
+                    <p className="text-stone-400 dark:text-stone-600 italic">No breakdown available.</p>
                 )}
             </div>
         </div>

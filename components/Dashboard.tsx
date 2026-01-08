@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Todo, TaskCategory, User } from '../types';
 import TaskItem from './TaskItem';
-import { Plus, Cat, LogOut, Search, SortAsc, SortDesc, MessageCircle, Sparkles, X, Loader2, Calendar, Bell, BellOff, List } from 'lucide-react';
+import { Plus, Cat, LogOut, Search, SortAsc, SortDesc, MessageCircle, Sparkles, X, Loader2, Calendar, Bell, BellOff, List, Moon, Sun } from 'lucide-react';
 import { getCatMotivation, suggestCatTasks } from '../services/geminiService';
 import { supabase } from '../lib/supabase';
 import { CATEGORY_COLORS } from '../constants';
@@ -16,6 +16,9 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   const [isLoadingTasks, setIsLoadingTasks] = useState(true);
   const [filter, setFilter] = useState<'All' | TaskCategory>('All');
   
+  // Theme State
+  const [isDarkMode, setIsDarkMode] = useState(false);
+
   // Sorting State
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc' | 'manual'>('manual');
   
@@ -42,6 +45,16 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   const GUEST_STORAGE_KEY = 'whiskerlist_guest_tasks';
 
   useEffect(() => {
+    // Initialize Theme
+    const savedTheme = localStorage.getItem('whiskerlist_theme');
+    if (savedTheme === 'dark' || (!savedTheme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+      setIsDarkMode(true);
+      document.documentElement.classList.add('dark');
+    } else {
+      setIsDarkMode(false);
+      document.documentElement.classList.remove('dark');
+    }
+
     fetchTasks();
     handleNewMotivation();
     
@@ -55,6 +68,18 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
       checkDueTasks();
     }
   }, [tasks, notificationsEnabled]);
+
+  const toggleTheme = () => {
+    if (isDarkMode) {
+      document.documentElement.classList.remove('dark');
+      localStorage.setItem('whiskerlist_theme', 'light');
+      setIsDarkMode(false);
+    } else {
+      document.documentElement.classList.add('dark');
+      localStorage.setItem('whiskerlist_theme', 'dark');
+      setIsDarkMode(true);
+    }
+  };
 
   const requestNotificationPermission = async () => {
     if (!('Notification' in window)) {
@@ -400,33 +425,41 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     });
 
   return (
-    <div className="min-h-screen bg-cat-cream pb-12">
+    <div className="min-h-screen bg-cat-cream dark:bg-stone-950 pb-12 transition-colors duration-300">
       {/* Header */}
-      <header className="bg-white border-b border-stone-200 sticky top-0 z-10 shadow-sm">
+      <header className="bg-white dark:bg-stone-900 border-b border-stone-200 dark:border-stone-800 sticky top-0 z-10 shadow-sm transition-colors duration-300">
         <div className="max-w-4xl mx-auto px-4 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <div className="bg-cat-orange p-1.5 rounded-lg">
               <Cat className="text-white" size={20} />
             </div>
-            <span className="font-bold text-cat-brown text-xl hidden sm:inline">WhiskerList</span>
+            <span className="font-bold text-cat-brown dark:text-stone-100 text-xl hidden sm:inline">WhiskerList</span>
           </div>
 
           <div className="flex items-center gap-4">
             {isGuest && (
-                 <span className="px-2 py-1 bg-orange-100 text-orange-600 text-xs font-bold rounded uppercase tracking-wide">Guest Mode</span>
+                 <span className="px-2 py-1 bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 text-xs font-bold rounded uppercase tracking-wide">Guest Mode</span>
             )}
+
+            <button
+                onClick={toggleTheme}
+                className="p-2 text-stone-400 hover:text-cat-orange hover:bg-stone-50 dark:hover:bg-stone-800 rounded-full transition-colors"
+                title={isDarkMode ? "Switch to Light Mode" : "Switch to Dark Mode"}
+            >
+                {isDarkMode ? <Sun size={20} /> : <Moon size={20} />}
+            </button>
             
             <button
               onClick={requestNotificationPermission}
-              className={`p-2 rounded-full transition-colors ${notificationsEnabled ? 'text-cat-orange bg-orange-50' : 'text-stone-400 hover:text-cat-orange hover:bg-stone-50'}`}
+              className={`p-2 rounded-full transition-colors ${notificationsEnabled ? 'text-cat-orange bg-orange-50 dark:bg-stone-800' : 'text-stone-400 hover:text-cat-orange hover:bg-stone-50 dark:hover:bg-stone-800'}`}
               title={notificationsEnabled ? "Notifications active" : "Enable notifications"}
             >
                 {notificationsEnabled ? <Bell size={20} /> : <BellOff size={20} />}
             </button>
 
-            <div className="flex items-center gap-2 bg-stone-100 px-3 py-1.5 rounded-full border border-stone-200">
+            <div className="flex items-center gap-2 bg-stone-100 dark:bg-stone-800 px-3 py-1.5 rounded-full border border-stone-200 dark:border-stone-700">
                 <img src={user.avatarUrl} alt={user.name} className="w-6 h-6 rounded-full" />
-                <span className="text-sm font-medium text-stone-600 hidden sm:inline">{user.name}</span>
+                <span className="text-sm font-medium text-stone-600 dark:text-stone-300 hidden sm:inline">{user.name}</span>
             </div>
             <button 
                 onClick={onLogout}
@@ -443,17 +476,17 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         
         {/* Welcome & Motivation */}
         <div className="mb-8">
-            <h1 className="text-3xl font-bold text-cat-brown mb-2">Hello, {user.name.split(' ')[0]}! 🐾</h1>
-            <div className="bg-white p-4 rounded-2xl shadow-sm border border-stone-100 flex items-start gap-4">
-                <div className="bg-cat-accent/20 p-2 rounded-full flex-shrink-0">
-                    <MessageCircle size={24} className="text-cat-orange-dark" />
+            <h1 className="text-3xl font-bold text-cat-brown dark:text-stone-100 mb-2">Hello, {user.name.split(' ')[0]}! 🐾</h1>
+            <div className="bg-white dark:bg-stone-900 p-4 rounded-2xl shadow-sm border border-stone-100 dark:border-stone-800 flex items-start gap-4 transition-colors">
+                <div className="bg-cat-accent/20 dark:bg-cat-accent/10 p-2 rounded-full flex-shrink-0">
+                    <MessageCircle size={24} className="text-cat-orange-dark dark:text-cat-orange" />
                 </div>
                 <div className="flex-grow">
-                    <p className="text-stone-600 italic">"{motivation}"</p>
+                    <p className="text-stone-600 dark:text-stone-300 italic">"{motivation}"</p>
                     <button 
                         onClick={handleNewMotivation}
                         disabled={isAiLoading}
-                        className="text-xs text-cat-orange-dark font-semibold mt-2 hover:underline disabled:opacity-50"
+                        className="text-xs text-cat-orange-dark dark:text-cat-orange font-semibold mt-2 hover:underline disabled:opacity-50"
                     >
                         {isAiLoading ? "Thinking..." : "New Purr-spective"}
                     </button>
@@ -462,12 +495,12 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         </div>
 
         {/* Input Area */}
-        <div className="bg-white p-2 rounded-2xl shadow-lg border border-stone-100 mb-8 flex flex-col sm:flex-row gap-2">
+        <div className="bg-white dark:bg-stone-900 p-2 rounded-2xl shadow-lg border border-stone-100 dark:border-stone-800 mb-8 flex flex-col sm:flex-row gap-2 transition-colors">
             <div className="flex-grow relative">
                 <input 
                     type="text" 
                     placeholder="What needs doing right meow?" 
-                    className="w-full h-12 pl-4 pr-12 rounded-xl bg-transparent outline-none text-stone-700 placeholder:text-stone-400"
+                    className="w-full h-12 pl-4 pr-12 rounded-xl bg-transparent outline-none text-stone-700 dark:text-stone-200 placeholder:text-stone-400 dark:placeholder:text-stone-500"
                     value={newTaskText}
                     onChange={(e) => setNewTaskText(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && addTask()}
@@ -488,14 +521,14 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                         type="date" 
                         value={newTaskDueDate}
                         onChange={(e) => setNewTaskDueDate(e.target.value)}
-                        className="h-10 px-3 rounded-lg bg-stone-100 border-none text-xs font-medium text-stone-600 outline-none cursor-pointer hover:bg-stone-200 transition-colors w-32"
+                        className="h-10 px-3 rounded-lg bg-stone-100 dark:bg-stone-800 border-none text-xs font-medium text-stone-600 dark:text-stone-300 outline-none cursor-pointer hover:bg-stone-200 dark:hover:bg-stone-700 transition-colors w-32 [color-scheme:light] dark:[color-scheme:dark]"
                     />
                 </div>
 
                 <select 
                     value={newTaskCategory}
                     onChange={(e) => setNewTaskCategory(e.target.value as TaskCategory)}
-                    className="h-10 px-3 rounded-lg bg-stone-100 border-none text-xs font-medium text-stone-600 outline-none cursor-pointer hover:bg-stone-200 transition-colors"
+                    className="h-10 px-3 rounded-lg bg-stone-100 dark:bg-stone-800 border-none text-xs font-medium text-stone-600 dark:text-stone-300 outline-none cursor-pointer hover:bg-stone-200 dark:hover:bg-stone-700 transition-colors"
                 >
                     {Object.values(TaskCategory).map(cat => (
                         <option key={cat} value={cat}>{cat}</option>
@@ -504,7 +537,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                 <button 
                     onClick={addTask}
                     disabled={isLoadingTasks}
-                    className="h-10 px-4 sm:px-6 bg-cat-brown text-white rounded-xl font-medium hover:bg-stone-700 transition-colors flex items-center justify-center gap-2 shadow-md hover:shadow-lg active:scale-95 duration-200 disabled:opacity-70"
+                    className="h-10 px-4 sm:px-6 bg-cat-brown dark:bg-cat-orange dark:text-stone-900 text-white rounded-xl font-medium hover:bg-stone-700 dark:hover:bg-cat-orange-dark transition-colors flex items-center justify-center gap-2 shadow-md hover:shadow-lg active:scale-95 duration-200 disabled:opacity-70"
                 >
                     {isLoadingTasks ? <Loader2 className="animate-spin" size={18} /> : <Plus size={18} />}
                     <span className="hidden sm:inline">Add</span>
@@ -519,8 +552,8 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                     onClick={() => setFilter('All')}
                     className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${
                         filter === 'All' 
-                        ? 'bg-cat-brown text-white shadow-md' 
-                        : 'bg-white text-stone-500 hover:bg-stone-50 border border-stone-200'
+                        ? 'bg-cat-brown text-white shadow-md dark:bg-cat-orange dark:text-stone-900' 
+                        : 'bg-white dark:bg-stone-900 text-stone-500 dark:text-stone-400 hover:bg-stone-50 dark:hover:bg-stone-800 border border-stone-200 dark:border-stone-800'
                     }`}
                 >
                     All Tasks
@@ -533,10 +566,10 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                         <button
                             key={cat}
                             onClick={() => setFilter(cat)}
-                            className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors border ${
+                            className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all border ${
                                 isActive 
-                                ? `${colorClass} shadow-md ring-1 ring-offset-1` 
-                                : 'bg-white text-stone-500 hover:bg-stone-50 border-stone-200'
+                                ? `${colorClass} shadow-md ring-2 ring-offset-1 ring-stone-200 dark:ring-stone-700 scale-105` 
+                                : `${colorClass} opacity-60 hover:opacity-100 hover:shadow-sm`
                             }`}
                         >
                             {cat}
@@ -547,7 +580,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
 
             <button
                 onClick={cycleSortOrder}
-                className="flex items-center gap-2 px-4 py-2 rounded-full bg-white text-stone-600 font-medium text-sm border border-stone-200 hover:bg-stone-50 transition-all shadow-sm active:scale-95 whitespace-nowrap"
+                className="flex items-center gap-2 px-4 py-2 rounded-full bg-white dark:bg-stone-900 text-stone-600 dark:text-stone-300 font-medium text-sm border border-stone-200 dark:border-stone-800 hover:bg-stone-50 dark:hover:bg-stone-800 transition-all shadow-sm active:scale-95 whitespace-nowrap"
             >
                 {sortOrder === 'asc' && (
                     <>
@@ -579,8 +612,8 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                  </div>
             ) : filteredAndSortedTasks.length === 0 ? (
                 <div className="text-center py-12 opacity-50">
-                    <Cat size={48} className="mx-auto mb-4 text-stone-300" />
-                    <p className="text-stone-400 font-medium">No tasks found. Time for a nap?</p>
+                    <Cat size={48} className="mx-auto mb-4 text-stone-300 dark:text-stone-600" />
+                    <p className="text-stone-400 dark:text-stone-500 font-medium">No tasks found. Time for a nap?</p>
                 </div>
             ) : (
                 filteredAndSortedTasks.map((task, index) => (
@@ -602,18 +635,18 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
 
         {/* AI Suggestions Modal */}
         {showAiModal && (
-            <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 animate-in fade-in zoom-in duration-200">
+            <div className="fixed inset-0 bg-black/20 dark:bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                <div className="bg-white dark:bg-stone-900 rounded-2xl shadow-2xl max-w-sm w-full p-6 animate-in fade-in zoom-in duration-200 border border-stone-100 dark:border-stone-800">
                     <div className="flex justify-between items-center mb-4">
-                        <h3 className="text-lg font-bold text-cat-brown flex items-center gap-2">
+                        <h3 className="text-lg font-bold text-cat-brown dark:text-stone-100 flex items-center gap-2">
                             <Sparkles className="text-cat-orange" size={20}/> 
                             Cat Assistant
                         </h3>
-                        <button onClick={() => setShowAiModal(false)} className="text-stone-400 hover:text-stone-600">
+                        <button onClick={() => setShowAiModal(false)} className="text-stone-400 hover:text-stone-600 dark:hover:text-stone-200">
                             <X size={20} />
                         </button>
                     </div>
-                    <p className="text-stone-600 mb-4 text-sm">
+                    <p className="text-stone-600 dark:text-stone-400 mb-4 text-sm">
                         Running low on ideas? Let the AI generate some "important" cat business for you.
                     </p>
 
@@ -624,14 +657,14 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                             onChange={(e) => setAiTheme(e.target.value)}
                             onKeyDown={(e) => e.key === 'Enter' && handleAiSuggestions()}
                             placeholder="e.g. hunting, napping, accounting..." 
-                            className="w-full px-4 py-2 rounded-xl bg-stone-50 border border-stone-200 focus:border-cat-orange focus:ring-2 focus:ring-cat-orange/20 outline-none text-stone-700 placeholder:text-stone-400 transition-all text-sm"
+                            className="w-full px-4 py-2 rounded-xl bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 focus:border-cat-orange dark:focus:border-cat-orange focus:ring-2 focus:ring-cat-orange/20 outline-none text-stone-700 dark:text-stone-200 placeholder:text-stone-400 dark:placeholder:text-stone-500 transition-all text-sm"
                         />
                     </div>
 
                     <button 
                         onClick={handleAiSuggestions}
                         disabled={isAiLoading}
-                        className="w-full py-3 bg-cat-orange text-white rounded-xl font-bold hover:bg-cat-orange-dark transition-colors flex items-center justify-center gap-2"
+                        className="w-full py-3 bg-cat-orange text-white dark:text-stone-900 rounded-xl font-bold hover:bg-cat-orange-dark transition-colors flex items-center justify-center gap-2"
                     >
                         {isAiLoading ? <Loader2 className="animate-spin" /> : "Generate Tasks"}
                     </button>
